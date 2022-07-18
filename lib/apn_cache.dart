@@ -1,7 +1,3 @@
 library apn_cache;
 
-/// A Calculator.
-class Calculator {
-  /// Returns [value] plus 1.
-  int addOne(int value) => value + 1;
-}
+export 'package:apn_cache/src/cache_service.dart';
