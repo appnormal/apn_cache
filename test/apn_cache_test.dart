@@ -1,7 +1,8 @@
-import 'package:apn_cache/apn_cache.dart';
 import 'package:equatable/equatable.dart';
 import 'package:meta/meta.dart';
 import 'package:test/test.dart';
+
+import 'package:apn_cache/apn_cache.dart';
 
 void main() {
   test('cache is saved when saving a model', () {
@@ -93,7 +94,46 @@ void main() {
     },
   );
 
-  // Add test for updating list and keeping existing detail info
+  test(
+    'When updating a list, the single object will not update',
+    () async {
+      final single = User(id: '12', age: 38, name: 'Mark');
+
+      final models = [
+        User(id: '12', age: 38, name: 'Mark'),
+        User(id: '13', age: 38, name: 'Mark'),
+        User(id: '14', age: 38, name: 'Mark'),
+        User(id: '15', age: 38, name: 'Mark'),
+      ];
+
+      final cacheService = MemoryCacheService();
+
+      final singleStream = cacheService.getSingle(
+        id: single.id,
+        idFinder: (User u) => u.id,
+        updateData: () async => single,
+      );
+
+      final listStream = cacheService.getList<User>(
+        key: 'models',
+        idFinder: (u) => u.id,
+        updateData: () async => models,
+      );
+      // // We update the user in the list, this should not reflect an update in the single stream
+      // final updated = single.copyWith(age: 40, name: 'Markie');
+
+      // final updatedList = models.map((e) => e.id == updated.id ? updated : e).toList();
+
+      // expect(listStream, emitsInOrder([models, updatedList, emitsDone]));
+
+      // Make sure we don't get a updated single object
+      expect(singleStream, emitsInOrder([single, emitsDone]));
+
+      await Future.microtask(() {});
+
+      cacheService.dispose();
+    },
+  );
 }
 
 class CachableUser extends Cachable<User> {
@@ -116,4 +156,18 @@ class User extends Equatable {
 
   @override
   List<Object?> get props => [id, name, age, description];
+
+  User copyWith({
+    String? id,
+    String? name,
+    int? age,
+    String? description,
+  }) {
+    return User(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      age: age ?? this.age,
+      description: description ?? this.description,
+    );
+  }
 }
