@@ -9,18 +9,17 @@ void main() {
 
     final cacheService = MemoryCacheService();
 
-    cacheService.putSingle('my_user', model, model.id);
+    cacheService.putSingle(model, model.id);
 
-    final results = cacheService.cacheBuckets['User']?.allForKey('my_user');
+    final results = cacheService.cacheBuckets['User_single']?.allForKey('12');
 
     expect(results, isNotNull);
     expect(results!.length, 1);
-
-    expect(cacheService.cacheBuckets['User']?.allForKey('my_user').first, model);
+    expect((results.first as Cachable<User>).model, model);
   });
 
   test(
-    'A list of models can be saved and listen for changes',
+    'When updating a single model, the list will also update',
     () async {
       final models = [
         User(id: '12', age: 38, name: 'Mark'),
@@ -31,7 +30,7 @@ void main() {
 
       final cacheService = MemoryCacheService();
 
-      final stream = cacheService.fetchAndWatchMultiple<User>(
+      final stream = cacheService.getList<User>(
         key: 'models',
         idFinder: (u) => u.id,
         updateData: () async => models,
@@ -40,14 +39,11 @@ void main() {
       final updated = User(id: '12', age: 40, name: 'Markie');
       final updatedList = models.map((e) => e.id == updated.id ? updated : e).toList();
 
-      final detailStream = cacheService.watchDetail<User>(updated.id);
-
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
-      expect(detailStream, emitsInOrder([models[0], updated, emitsDone]));
 
       await Future.microtask(() {});
 
-      cacheService.putSingle('my_user', updated, updated.id);
+      cacheService.putSingle(updated, updated.id);
 
       cacheService.dispose();
     },
@@ -67,33 +63,37 @@ void main() {
 
       expect(cacheService.cacheBuckets['User'], isNull);
 
-      final stream = cacheService.fetchAndWatchMultiple(
+      final stream = cacheService.getList(
         key: 'models',
         idFinder: (User u) => u.id,
         updateData: () async => models,
       );
 
       final updated = User(id: '12', age: 40, name: 'Markie');
+      final updatedList = models.map((e) => e.id == updated.id ? updated : e).toList();
 
-      // * Will not get the updated data when only the detail is updated
-      expect(stream, emitsInOrder([models, emitsDone]));
+      // * Will get the updated data when detail info is updated
+      expect(stream, emitsInOrder([models, updatedList, emitsDone]));
 
       await Future.microtask(() {});
 
       expect(cacheService.cacheBuckets['User'], isNotNull);
-      expect(cacheService.cacheBuckets['User_detail'], isNotNull);
+      expect(cacheService.cacheBuckets['User_single'], isNotNull);
 
-      final modelDetailKey = cacheService.detailStreamKey<User>(updated.id);
+      final modelDetailKey = '12';
+      expect(cacheService.cacheBuckets['User_single']!.allForKey(modelDetailKey), hasLength(1));
+      expect(cacheService.cacheBuckets['User_single']!.allForKey(modelDetailKey).first.model, models[0]);
 
-      expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey), hasLength(1));
-      expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey).first, models[0]);
+      cacheService.putSingle(updated, updated.id);
 
-      cacheService.updateDetail(updated, updated.id);
-      expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey).first, updated);
+      expect(cacheService.cacheBuckets['User_single']!.allForKey(modelDetailKey).first.model, updated);
+      expect(cacheService.cacheBuckets['User']!.allForKey(modelDetailKey).first.model, updated);
 
       cacheService.dispose();
     },
   );
+
+  // Add test for updating list and keeping existing detail info
 }
 
 class CachableUser extends Cachable<User> {

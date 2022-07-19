@@ -40,11 +40,8 @@ class MemoryCacheBucket<T, S extends Cachable<T>> extends CacheBucket<T, S> {
   }
 
   @override
-  List<T> allForKey(String streamKey) {
-    return _cachedObjects
-        .where((element) => element.streamKeys.contains(streamKey))
-        .map((element) => element.model)
-        .toList();
+  List<S> allForKey(String streamKey) {
+    return _cachedObjects.where((element) => element.streamKeys.contains(streamKey)).toList();
   }
 
   @override

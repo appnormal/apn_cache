@@ -1,21 +1,49 @@
 import 'dart:async';
 
-import 'package:apn_cache/src/exceptions/unknown_type_exception.dart';
+import 'package:meta/meta.dart';
 
-// * When the key ends in `detail`, it will be saved in a separate bucket.
-// * This allows us to update the detail models separately from the main models.
-const detailSuffix = 'detail';
+// * When the key ends in `single`, it will be saved in a separate bucket.
+// * This allows us to update the single models separately from the main models.
+const _singleSuffix = 'single';
 
 abstract class ICacheService {
   final Map<String, StreamController<List<dynamic>>> _streams = {};
 
-  /// Returns a stream containing a list of object with
-  /// type `Model` that have the given streamkey.
-  Stream<List<T>> fetchAndWatchMultiple<T>({
+  Stream<T> getSingle<T>({
+    // Key where the data is stored
+    required Object id,
+    // To store the data we need to know the id of the object.
+    required IdFinder<T>? idFinder,
+    // Will be called directly to refresh (or insert the first entry of) the data to be cached
+    required Future<T?> Function() updateData,
+  }) {
+    Future<List<T>> listUpdateData() async {
+      final model = await updateData();
+      if (model == null) return [];
+      return [model];
+    }
+
+    final controller = _getCacheStream<T>(
+      key: id.toString(),
+      idFinder: idFinder,
+      updateData: listUpdateData,
+      bucketSuffix: _singleSuffix,
+    );
+
+    return controller.stream.map((event) => event.first);
+  }
+
+  void putSingle<T>(T value, Object id) {
+    putList<T>(id.toString(), [value], <T>(_) => id);
+  }
+
+  /// Returns a stream containing a list of objects with
+  /// type `T` that have the given streamkey.
+  Stream<List<T>> getList<T>({
     // Key where the data is stored
     required String key,
-    // To store the data we need a cachable model, so a converter is required
-    required IdFinder<T> idFinder,
+    // To store the data we need to know the id of the object.
+    required IdFinder<T>? idFinder,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
     required Future<List<T>?> Function() updateData,
   }) {
@@ -29,44 +57,21 @@ abstract class ICacheService {
     return controller.stream;
   }
 
-  Stream<T> fetchAndWatch<T>({
-    // Key where the data is stored
-    required String key,
-    // To store the data we need a cachable model, so a converter is required
-    required IdFinder<T> idFinder,
-    // Will be called directly to refresh (or insert the first entry of) the data to be cached
-    required Future<T?> Function() updateData,
-  }) {
-    Future<List<T>> listUpdateData() async {
-      final model = await updateData();
-      if (model == null) return [];
-      return [model];
-    }
+  void putList<T>(String key, List<T> value, IdFinder<T> idFinder) {
+    // * Update the main models only if we are not updating a single model
+    _updateValueInBucket<T>(key, value, idFinder);
 
-    final controller = _getCacheStream<T>(
-      key: key,
-      idFinder: idFinder,
-      updateData: listUpdateData,
+    // * Update main models only if we are not updating a single model
+    final isSingle = value.length == 1 && idFinder(value.first).toString() == key;
+
+    // * Update single models, and insert them when missing when needed
+    _updateValueInBucket<T>(
+      null,
+      value,
+      idFinder,
+      bucketSuffix: _singleSuffix,
+      insertWhenMissing: !isSingle,
     );
-
-    return controller.stream.map((event) => event.first);
-  }
-
-  /// Returns a stream containing a single object of given type `T`
-  /// and id `id`.
-  Stream<T> watchModel<T>(Object id) {
-    return watchByKey(modelStreamKey<T>(id));
-  }
-
-  Stream<T> watchDetail<T>(Object id) {
-    return watchByKey(detailStreamKey<T>(id), detailSuffix);
-  }
-
-  Stream<T> watchByKey<T>(String key, [String? buckedSuffix]) {
-    return _getCacheStream<T>(
-      key: key,
-      bucketSuffix: buckedSuffix,
-    ).stream.map((event) => event.first);
   }
 
   // * Used to update the cache and fetch the current cache
@@ -77,7 +82,7 @@ abstract class ICacheService {
     String? bucketSuffix,
   }) {
     if (updateData != null && idFinder == null) {
-      throw Exception('Converter is required when updating data');
+      throw Exception('IdFinder is required when updateData is not null');
     }
 
     final controller = _getOrCreateStreamController<T>(key, bucketSuffix);
@@ -92,60 +97,19 @@ abstract class ICacheService {
       controller.addError(error, stackTrace);
     });
 
-    // TOIMPROVE: add TTL (Time to live) and check if it is expired,
-    // only return non-stale cache and call udpateData when needed
-
     // * Get the cached value if we have it from list
     final cache = getBucket<T, Cachable<T>>(bucketSuffix).allForKey(key);
+
+    // TOIMPROVE: add TTL (Time to live) and check if it is expired,
+    // only return non-stale cache and call udpateData when needed
 
     if (cache.isNotEmpty) {
       // Emit the cached value async, so that the stream
       // is fully initialized and listened to
-      Future.microtask(() => controller.add(cache));
+      Future.microtask(() => controller.add(cache.map((e) => e.model).toList()));
     }
 
     return controller;
-  }
-
-  // * A unique model key given a Type T and an id
-  String modelStreamKey<T>(Object id) {
-    throwIfDynamicType<T>();
-
-    return '${T.toString()}_${id.toString()}';
-  }
-
-  // * A unique detail key given an Type T and an id
-  String detailStreamKey<T>(Object id) => '${modelStreamKey<T>(id)}_detail';
-
-  void updateModel<T>(T value, Object id) {
-    putSingle<T>(modelStreamKey<T>(id), value, id);
-  }
-
-  void updateDetail<T>(T value, Object id) {
-    putSingle<T>(detailStreamKey<T>(id), value, id);
-  }
-
-  void putSingle<T>(String key, T value, Object id) {
-    putList<T>(key, [value], <T>(_) => id);
-  }
-
-  void putList<T>(String key, List<T> value, IdFinder<T> idFinder) {
-    // * Update main models only if we are not updating a detail model
-    final isDetailKey = key.endsWith(detailSuffix) == true;
-
-    // * Update the main models only if we are not updating a detail model
-    if (!isDetailKey) {
-      _updateValueInBucket<T>(key, value, idFinder);
-    }
-
-    // * Update detail models, and insert them when missing when needed
-    _updateValueInBucket<T>(
-      null,
-      value,
-      idFinder,
-      bucketSuffix: detailSuffix,
-      insertWhenMissing: !isDetailKey,
-    );
   }
 
   void _updateValueInBucket<T>(
@@ -174,7 +138,7 @@ abstract class ICacheService {
 
       if (shouldAdd) {
         final cacheValue = Cachable(v, modelId);
-        allStreamKeys.addAll(bucket.put(detailStreamKey<T>(modelId), cacheValue));
+        allStreamKeys.addAll(bucket.put(modelId, cacheValue));
         allStreamKeys.addAll(bucket.put(realKey, cacheValue));
       }
     }
@@ -185,7 +149,7 @@ abstract class ICacheService {
     // Notify all listeners of the values that are updated
     for (final element in uniqueStreamKeys) {
       final values = bucket.allForKey(element);
-      _getOrCreateStreamController<T>(element, bucketSuffix).add(values);
+      _getOrCreateStreamController<T>(element, bucketSuffix).add(values.map((e) => e.model).toList());
     }
   }
 
@@ -202,13 +166,14 @@ abstract class ICacheService {
     _streams.forEach((_, value) => value.close());
   }
 
+  @protected
   CacheBucket<T, S> getBucket<T, S extends Cachable<T>>([String? suffix]);
 }
 
 abstract class CacheBucket<T, S extends Cachable<T>> {
   List<String> put(String streamKey, S value);
 
-  List<T> allForKey(String streamKey);
+  List<S> allForKey(String streamKey);
 
   void removeKeyFromValues(String name);
 }
