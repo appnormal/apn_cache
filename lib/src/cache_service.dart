@@ -79,6 +79,12 @@ abstract class ICacheService {
     );
   }
 
+  // * Remove model references from this key
+  void clearCache<T>(String key) {
+    final bucket = getBucket<T, Cachable<T>>();
+    bucket.removeKeyFromValues(key);
+  }
+
   // * Used to update the cache and fetch the current cache
   StreamController<List<T>> _getCacheStream<T>({
     required String key,
@@ -128,11 +134,6 @@ abstract class ICacheService {
   }) {
     final bucketSuffix = isSingle ? _singleSuffix : null;
     final bucket = getBucket<T, Cachable<T>>(bucketSuffix);
-
-    // Remove old data tied to this key, only on non-single models, single models will be replaced
-    if (!isSingle) {
-      bucket.removeKeyFromValues(key);
-    }
 
     final allStreamKeys = <String>[];
     for (final value in values) {
