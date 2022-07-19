@@ -2,6 +2,10 @@ import 'dart:async';
 
 import 'package:apn_cache/src/exceptions/unknown_type_exception.dart';
 
+// * When the key ends in `detail`, it will be saved in a separate bucket.
+// * This allows us to update the detail models separately from the main models.
+const detailSuffix = 'detail';
+
 abstract class ICacheService {
   final Map<String, StreamController<List<dynamic>>> _streams = {};
 
@@ -55,11 +59,14 @@ abstract class ICacheService {
   }
 
   Stream<T> watchDetail<T, S extends Cachable<T>>(Object id) {
-    return watchByKey(detailStreamKey<T>(id));
+    return watchByKey(detailStreamKey<T>(id), detailSuffix);
   }
 
-  Stream<T> watchByKey<T, S extends Cachable<T>>(String key) {
-    return _getCacheStream<T, S>(key: key).stream.map((event) => event.first);
+  Stream<T> watchByKey<T, S extends Cachable<T>>(String key, [String? buckedSuffix]) {
+    return _getCacheStream<T, S>(
+      key: key,
+      bucketSuffix: buckedSuffix,
+    ).stream.map((event) => event.first);
   }
 
   // * Used to update the cache and fetch the current cache
@@ -67,12 +74,13 @@ abstract class ICacheService {
     required String key,
     S Function(T model)? converter,
     Future<List<T>?> Function()? updateData,
+    String? bucketSuffix,
   }) {
     if (updateData != null && converter == null) {
       throw Exception('Converter is required when updating data');
     }
 
-    final controller = _getOrCreateStreamController<T>(key);
+    final controller = _getOrCreateStreamController<T>(key, bucketSuffix);
 
     // Update data
     updateData?.call().then((List<T>? models) {
@@ -88,7 +96,7 @@ abstract class ICacheService {
     // only return non-stale cache and call udpateData when needed
 
     // * Get the cached value if we have it from list
-    final cache = getBucket<T, S>().allForKey(key);
+    final cache = getBucket<T, S>(bucketSuffix).allForKey(key);
 
     if (cache.isNotEmpty) {
       // Emit the cached value async, so that the stream
@@ -117,42 +125,53 @@ abstract class ICacheService {
     putSingle<T, S>(detailStreamKey<T>(value.id), value);
   }
 
-  void putSingle<T, S extends Cachable<T>>(String? key, S value) {
+  void putSingle<T, S extends Cachable<T>>(String key, S value) {
     putList<T, S>(key, [value]);
   }
 
-  void putList<T, S extends Cachable<T>>(String? key, List<S> value) {
-    final bucket = getBucket<T, S>();
+  void putList<T, S extends Cachable<T>>(String key, List<S> value) {
+    // * Update main models only if we are not updating a detail model
+    final isDetailKey = key.endsWith(detailSuffix) == true;
+
+    // * Update the main models only if we are not updating a detail model
+    if (!isDetailKey) {
+      _updateValueInBucket<T, S>(key, value);
+    }
+
+    // * Update detail models, and insert them when missing when needed
+    _updateValueInBucket<T, S>(
+      null,
+      value,
+      bucketSuffix: detailSuffix,
+      insertWhenMissing: !isDetailKey,
+    );
+  }
+
+  void _updateValueInBucket<T, S extends Cachable<T>>(
+    String? key,
+    List<S> value, {
+    String? bucketSuffix,
+    bool insertWhenMissing = false,
+  }) {
+    final bucket = getBucket<T, S>(bucketSuffix);
+
+    final realKey = [key, bucketSuffix].where((element) => element != null).join('_');
 
     // Remove old data tied to this key
-    if (key != null) {
-      bucket.removeKeyFromValues(key);
-    }
+    bucket.removeKeyFromValues(realKey);
 
     final allStreamKeys = <String>[];
     for (final S v in value) {
-      // * Get keys for the single model and detail
-      // - model: always latest data for use in lists and such
-      // - detail: separately updateable and can be expanded with additional data, for detail views
-      final modelKey = modelStreamKey<T>(v.id);
-      final detailModelKey = detailStreamKey<T>(v.id);
-
-      final hasDetail = bucket.allForKey(detailModelKey).isNotEmpty;
-      final keyIsDetail = key == detailModelKey;
-
-      // * Only add detail cache if its explicitly requested by the key or if no detail cache exists
-      if (!hasDetail || keyIsDetail) {
-        allStreamKeys.addAll(bucket.put(detailModelKey, v));
+      final bool shouldAdd;
+      if (insertWhenMissing) {
+        shouldAdd = bucket.allForKey(v.id).isEmpty;
+      } else {
+        shouldAdd = true;
       }
 
-      if (!keyIsDetail) {
-        allStreamKeys.addAll(bucket.put(modelKey, v));
-      }
-
-      // Add the value to the bucket with the given key if the key
-      // is different than the modelStreamKey and the detailModelStreamKey
-      if (key != null && key != modelKey && !keyIsDetail) {
-        allStreamKeys.addAll(bucket.put(key, v));
+      if (shouldAdd) {
+        allStreamKeys.addAll(bucket.put(detailStreamKey<T>(v.id), v));
+        allStreamKeys.addAll(bucket.put(realKey, v));
       }
     }
 
@@ -162,22 +181,24 @@ abstract class ICacheService {
     // Notify all listeners of the values that are updated
     for (final element in uniqueStreamKeys) {
       final values = bucket.allForKey(element);
-      _getOrCreateStreamController<T>(element).add(values);
+      _getOrCreateStreamController<T>(element, bucketSuffix).add(values);
     }
   }
 
-  StreamController<List<T>> _getOrCreateStreamController<T>(String key) {
-    if (_streams[key] == null) {
-      _streams[key] = StreamController<List<T>>.broadcast();
+  StreamController<List<T>> _getOrCreateStreamController<T>(String key, String? bucketSuffix) {
+    final realKey = [key, bucketSuffix].where((element) => element != null).join('_');
+
+    if (_streams[realKey] == null) {
+      _streams[realKey] = StreamController<List<T>>.broadcast();
     }
-    return _streams[key]! as StreamController<List<T>>;
+    return _streams[realKey]! as StreamController<List<T>>;
   }
 
   void dispose() {
     _streams.forEach((_, value) => value.close());
   }
 
-  CacheBucket<T, S> getBucket<T, S extends Cachable<T>>();
+  CacheBucket<T, S> getBucket<T, S extends Cachable<T>>([String? suffix]);
 }
 
 abstract class CacheBucket<T, S extends Cachable<T>> {

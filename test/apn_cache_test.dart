@@ -51,7 +51,10 @@ void main() {
       final updated = User(id: '12', age: 40, name: 'Markie');
       final updatedList = models.map((e) => e.id == updated.id ? updated : e).toList();
 
+      final detailStream = cacheService.watchDetail<User, CachableUser>(updated.id);
+
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
+      expect(detailStream, emitsInOrder([models[0], updated, emitsDone]));
 
       await Future.microtask(() {});
 
@@ -84,18 +87,20 @@ void main() {
       final updated = User(id: '12', age: 40, name: 'Markie');
 
       // * Will not get the updated data when only the detail is updated
-      expect(stream, emitsInOrder([models, models, emitsDone]));
+      expect(stream, emitsInOrder([models, emitsDone]));
 
       await Future.microtask(() {});
 
       expect(cacheService.cacheBuckets['User'], isNotNull);
+      expect(cacheService.cacheBuckets['User_detail'], isNotNull);
 
       final modelDetailKey = cacheService.detailStreamKey<User>(updated.id);
-      expect(cacheService.cacheBuckets['User']!.allForKey(modelDetailKey), hasLength(1));
-      expect(cacheService.cacheBuckets['User']!.allForKey(modelDetailKey).first, models[0]);
+
+      expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey), hasLength(1));
+      expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey).first, models[0]);
 
       cacheService.updateDetail<User, CachableUser>(CachableUser(updated, updated.id));
-      expect(cacheService.cacheBuckets['User']!.allForKey(modelDetailKey).first, updated);
+      expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey).first, updated);
 
       cacheService.dispose();
     },

@@ -4,10 +4,11 @@ class MemoryCacheService extends ICacheService {
   final cacheBuckets = <String, MemoryCacheBucket<dynamic, dynamic>>{};
 
   @override
-  MemoryCacheBucket<T, S> getBucket<T, S extends Cachable<T>>() {
+  MemoryCacheBucket<T, S> getBucket<T, S extends Cachable<T>>([String? suffix]) {
     throwIfDynamicType<T>();
 
-    return cacheBuckets.putIfAbsent(T.toString(), () => MemoryCacheBucket<T, S>()) as MemoryCacheBucket<T, S>;
+    final bucketKey = "${T.toString()}${suffix?.isNotEmpty ?? false ? "_$suffix" : ""}";
+    return cacheBuckets.putIfAbsent(bucketKey, () => MemoryCacheBucket<T, S>()) as MemoryCacheBucket<T, S>;
   }
 }
 
