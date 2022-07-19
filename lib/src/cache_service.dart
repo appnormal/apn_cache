@@ -103,7 +103,10 @@ abstract class ICacheService {
 
     // Update data
     updateData?.call().then((List<T>? models) {
-      if (models == null || models.isEmpty == true) return;
+      if (models == null || models.isEmpty == true) {
+        controller.add([]);
+        return;
+      }
 
       //* Update object in all lists that contain the id
       putList<T>(key, models, idFinder!);
