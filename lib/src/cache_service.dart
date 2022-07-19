@@ -9,11 +9,14 @@ const _singleSuffix = 'single';
 abstract class ICacheService {
   final Map<String, StreamController<List<dynamic>>> _streams = {};
 
+  T? getSingleSync<T>(Object id) {
+    final cache = getBucket<T, Cachable<T>>(_singleSuffix).allForKey(id.toString());
+    return cache.isEmpty ? null : cache.first.model;
+  }
+
   Stream<T> getSingle<T>({
     // Key where the data is stored
     required Object id,
-    // To store the data we need to know the id of the object.
-    IdFinder<T>? idFinder,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
     Future<T?> Function()? updateData,
   }) {
@@ -30,7 +33,7 @@ abstract class ICacheService {
 
     final controller = _getCacheStream<T>(
       key: id.toString(),
-      idFinder: idFinder,
+      idFinder: (_) => id,
       updateData: listUpdateData,
       bucketSuffix: _singleSuffix,
     );
@@ -42,7 +45,7 @@ abstract class ICacheService {
     putList<T>(id.toString(), [value], <T>(_) => id);
   }
 
-  /// Returns a stream containing a list of objects with
+  /// Returns a stream containing a list of objects withd
   /// type `T` that have the given streamkey.
   Stream<List<T>> getList<T>({
     // Key where the data is stored

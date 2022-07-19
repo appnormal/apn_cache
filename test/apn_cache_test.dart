@@ -133,7 +133,6 @@ void main() {
 
       final singleStream = cacheService.getSingle(
         id: single.id,
-        idFinder: (User u) => u.id,
         updateData: () async => single,
       );
 
