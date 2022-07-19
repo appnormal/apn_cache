@@ -11,17 +11,17 @@ abstract class ICacheService {
 
   /// Returns a stream containing a list of object with
   /// type `Model` that have the given streamkey.
-  Stream<List<T>> fetchAndWatchMultiple<T, S extends Cachable<T>>({
+  Stream<List<T>> fetchAndWatchMultiple<T>({
     // Key where the data is stored
     required String key,
     // To store the data we need a cachable model, so a converter is required
-    required S Function(T model) converter,
+    required IdFinder<T> idFinder,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
     required Future<List<T>?> Function() updateData,
   }) {
-    final controller = _getCacheStream<T, S>(
+    final controller = _getCacheStream<T>(
       key: key,
-      converter: converter,
+      idFinder: idFinder,
       updateData: updateData,
     );
 
@@ -29,11 +29,11 @@ abstract class ICacheService {
     return controller.stream;
   }
 
-  Stream<T> fetchAndWatch<T, S extends Cachable<T>>({
+  Stream<T> fetchAndWatch<T>({
     // Key where the data is stored
     required String key,
     // To store the data we need a cachable model, so a converter is required
-    required S Function(T model) converter,
+    required IdFinder<T> idFinder,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
     required Future<T?> Function() updateData,
   }) {
@@ -43,9 +43,9 @@ abstract class ICacheService {
       return [model];
     }
 
-    final controller = _getCacheStream<T, S>(
+    final controller = _getCacheStream<T>(
       key: key,
-      converter: converter,
+      idFinder: idFinder,
       updateData: listUpdateData,
     );
 
@@ -54,29 +54,29 @@ abstract class ICacheService {
 
   /// Returns a stream containing a single object of given type `T`
   /// and id `id`.
-  Stream<T> watchModel<T, S extends Cachable<T>>(Object id) {
+  Stream<T> watchModel<T>(Object id) {
     return watchByKey(modelStreamKey<T>(id));
   }
 
-  Stream<T> watchDetail<T, S extends Cachable<T>>(Object id) {
+  Stream<T> watchDetail<T>(Object id) {
     return watchByKey(detailStreamKey<T>(id), detailSuffix);
   }
 
-  Stream<T> watchByKey<T, S extends Cachable<T>>(String key, [String? buckedSuffix]) {
-    return _getCacheStream<T, S>(
+  Stream<T> watchByKey<T>(String key, [String? buckedSuffix]) {
+    return _getCacheStream<T>(
       key: key,
       bucketSuffix: buckedSuffix,
     ).stream.map((event) => event.first);
   }
 
   // * Used to update the cache and fetch the current cache
-  StreamController<List<T>> _getCacheStream<T, S extends Cachable<T>>({
+  StreamController<List<T>> _getCacheStream<T>({
     required String key,
-    S Function(T model)? converter,
+    IdFinder<T>? idFinder,
     Future<List<T>?> Function()? updateData,
     String? bucketSuffix,
   }) {
-    if (updateData != null && converter == null) {
+    if (updateData != null && idFinder == null) {
       throw Exception('Converter is required when updating data');
     }
 
@@ -87,7 +87,7 @@ abstract class ICacheService {
       if (models == null || models.isEmpty == true) return;
 
       //* Update object in all lists that contain the id
-      putList<T, S>(key, models.map(converter!).toList());
+      putList<T>(key, models, idFinder!);
     }).onError((Object error, StackTrace? stackTrace) {
       controller.addError(error, stackTrace);
     });
@@ -96,7 +96,7 @@ abstract class ICacheService {
     // only return non-stale cache and call udpateData when needed
 
     // * Get the cached value if we have it from list
-    final cache = getBucket<T, S>(bucketSuffix).allForKey(key);
+    final cache = getBucket<T, Cachable<T>>(bucketSuffix).allForKey(key);
 
     if (cache.isNotEmpty) {
       // Emit the cached value async, so that the stream
@@ -117,43 +117,45 @@ abstract class ICacheService {
   // * A unique detail key given an Type T and an id
   String detailStreamKey<T>(Object id) => '${modelStreamKey<T>(id)}_detail';
 
-  void updateModel<T, S extends Cachable<T>>(S value) {
-    putSingle<T, S>(modelStreamKey<T>(value.id), value);
+  void updateModel<T>(T value, Object id) {
+    putSingle<T>(modelStreamKey<T>(id), value, id);
   }
 
-  void updateDetail<T, S extends Cachable<T>>(S value) {
-    putSingle<T, S>(detailStreamKey<T>(value.id), value);
+  void updateDetail<T>(T value, Object id) {
+    putSingle<T>(detailStreamKey<T>(id), value, id);
   }
 
-  void putSingle<T, S extends Cachable<T>>(String key, S value) {
-    putList<T, S>(key, [value]);
+  void putSingle<T>(String key, T value, Object id) {
+    putList<T>(key, [value], <T>(_) => id);
   }
 
-  void putList<T, S extends Cachable<T>>(String key, List<S> value) {
+  void putList<T>(String key, List<T> value, IdFinder<T> idFinder) {
     // * Update main models only if we are not updating a detail model
     final isDetailKey = key.endsWith(detailSuffix) == true;
 
     // * Update the main models only if we are not updating a detail model
     if (!isDetailKey) {
-      _updateValueInBucket<T, S>(key, value);
+      _updateValueInBucket<T>(key, value, idFinder);
     }
 
     // * Update detail models, and insert them when missing when needed
-    _updateValueInBucket<T, S>(
+    _updateValueInBucket<T>(
       null,
       value,
+      idFinder,
       bucketSuffix: detailSuffix,
       insertWhenMissing: !isDetailKey,
     );
   }
 
-  void _updateValueInBucket<T, S extends Cachable<T>>(
+  void _updateValueInBucket<T>(
     String? key,
-    List<S> value, {
+    List<T> value,
+    IdFinder<T> idFinder, {
     String? bucketSuffix,
     bool insertWhenMissing = false,
   }) {
-    final bucket = getBucket<T, S>(bucketSuffix);
+    final bucket = getBucket<T, Cachable<T>>(bucketSuffix);
 
     final realKey = [key, bucketSuffix].where((element) => element != null).join('_');
 
@@ -161,17 +163,19 @@ abstract class ICacheService {
     bucket.removeKeyFromValues(realKey);
 
     final allStreamKeys = <String>[];
-    for (final S v in value) {
+    for (final T v in value) {
+      final modelId = idFinder(v).toString();
       final bool shouldAdd;
       if (insertWhenMissing) {
-        shouldAdd = bucket.allForKey(v.id).isEmpty;
+        shouldAdd = bucket.allForKey(modelId).isEmpty;
       } else {
         shouldAdd = true;
       }
 
       if (shouldAdd) {
-        allStreamKeys.addAll(bucket.put(detailStreamKey<T>(v.id), v));
-        allStreamKeys.addAll(bucket.put(realKey, v));
+        final cacheValue = Cachable(v, modelId);
+        allStreamKeys.addAll(bucket.put(detailStreamKey<T>(modelId), cacheValue));
+        allStreamKeys.addAll(bucket.put(realKey, cacheValue));
       }
     }
 
@@ -245,3 +249,5 @@ class Cachable<T> {
     streamKeys.remove(key);
   }
 }
+
+typedef IdFinder<T> = Object Function(T);

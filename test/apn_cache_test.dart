@@ -9,7 +9,7 @@ void main() {
 
     final cacheService = MemoryCacheService();
 
-    cacheService.putSingle<User, CachableUser>('my_user', CachableUser(model, model.id));
+    cacheService.putSingle('my_user', model, model.id);
 
     final results = cacheService.cacheBuckets['User']?.allForKey('my_user');
 
@@ -17,17 +17,6 @@ void main() {
     expect(results!.length, 1);
 
     expect(cacheService.cacheBuckets['User']?.allForKey('my_user').first, model);
-  });
-
-  test('model cannot be cached when type is dynamic', () {
-    final model = User(id: '12', age: 38, name: 'Mark');
-
-    final cacheService = MemoryCacheService();
-
-    expect(
-      () => cacheService.putSingle('key', CachableUser(model, model.id)),
-      throwsA(TypeMatcher<UnknownTypeException>()),
-    );
   });
 
   test(
@@ -42,23 +31,23 @@ void main() {
 
       final cacheService = MemoryCacheService();
 
-      final stream = cacheService.fetchAndWatchMultiple(
+      final stream = cacheService.fetchAndWatchMultiple<User>(
         key: 'models',
-        converter: (User u) => CachableUser(u, u.id),
+        idFinder: (u) => u.id,
         updateData: () async => models,
       );
 
       final updated = User(id: '12', age: 40, name: 'Markie');
       final updatedList = models.map((e) => e.id == updated.id ? updated : e).toList();
 
-      final detailStream = cacheService.watchDetail<User, CachableUser>(updated.id);
+      final detailStream = cacheService.watchDetail<User>(updated.id);
 
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
       expect(detailStream, emitsInOrder([models[0], updated, emitsDone]));
 
       await Future.microtask(() {});
 
-      cacheService.putSingle<User, CachableUser>('my_user', CachableUser(updated, updated.id));
+      cacheService.putSingle('my_user', updated, updated.id);
 
       cacheService.dispose();
     },
@@ -80,7 +69,7 @@ void main() {
 
       final stream = cacheService.fetchAndWatchMultiple(
         key: 'models',
-        converter: (User u) => CachableUser(u, u.id),
+        idFinder: (User u) => u.id,
         updateData: () async => models,
       );
 
@@ -99,7 +88,7 @@ void main() {
       expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey), hasLength(1));
       expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey).first, models[0]);
 
-      cacheService.updateDetail<User, CachableUser>(CachableUser(updated, updated.id));
+      cacheService.updateDetail(updated, updated.id);
       expect(cacheService.cacheBuckets['User_detail']!.allForKey(modelDetailKey).first, updated);
 
       cacheService.dispose();
