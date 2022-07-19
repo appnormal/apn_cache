@@ -13,14 +13,19 @@ abstract class ICacheService {
     // Key where the data is stored
     required Object id,
     // To store the data we need to know the id of the object.
-    required IdFinder<T>? idFinder,
+    IdFinder<T>? idFinder,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
-    required Future<T?> Function() updateData,
+    Future<T?> Function()? updateData,
   }) {
-    Future<List<T>> listUpdateData() async {
-      final model = await updateData();
-      if (model == null) return [];
-      return [model];
+    final Future<List<T>?> Function()? listUpdateData;
+    if (updateData != null) {
+      listUpdateData = () async {
+        final model = await updateData();
+        if (model == null) return [];
+        return <T>[model];
+      };
+    } else {
+      listUpdateData = null;
     }
 
     final controller = _getCacheStream<T>(
@@ -43,9 +48,9 @@ abstract class ICacheService {
     // Key where the data is stored
     required String key,
     // To store the data we need to know the id of the object.
-    required IdFinder<T>? idFinder,
+    IdFinder<T>? idFinder,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
-    required Future<List<T>?> Function() updateData,
+    Future<List<T>?> Function()? updateData,
   }) {
     final controller = _getCacheStream<T>(
       key: key,
@@ -59,17 +64,17 @@ abstract class ICacheService {
 
   void putList<T>(String key, List<T> value, IdFinder<T> idFinder) {
     // * Update the main models only if we are not updating a single model
-    _updateValueInBucket<T>(key, value, idFinder);
+    _updateValueInBucket<T>(key, value, idFinder, false);
 
     // * Update main models only if we are not updating a single model
     final isSingle = value.length == 1 && idFinder(value.first).toString() == key;
 
     // * Update single models, and insert them when missing when needed
     _updateValueInBucket<T>(
-      null,
+      key,
       value,
       idFinder,
-      bucketSuffix: _singleSuffix,
+      true,
       insertWhenMissing: !isSingle,
     );
   }
@@ -106,29 +111,33 @@ abstract class ICacheService {
     if (cache.isNotEmpty) {
       // Emit the cached value async, so that the stream
       // is fully initialized and listened to
-      Future.microtask(() => controller.add(cache.map((e) => e.model).toList()));
+      controller.onListen = () {
+        controller.add(cache.map((e) => e.model).toList());
+      };
     }
 
     return controller;
   }
 
   void _updateValueInBucket<T>(
-    String? key,
-    List<T> value,
-    IdFinder<T> idFinder, {
-    String? bucketSuffix,
+    String key,
+    List<T> values,
+    IdFinder<T> idFinder,
+    bool isSingle, {
     bool insertWhenMissing = false,
   }) {
+    final bucketSuffix = isSingle ? _singleSuffix : null;
     final bucket = getBucket<T, Cachable<T>>(bucketSuffix);
 
-    final realKey = [key, bucketSuffix].where((element) => element != null).join('_');
-
-    // Remove old data tied to this key
-    bucket.removeKeyFromValues(realKey);
+    // Remove old data tied to this key, only on non-single models, single models will be replaced
+    if (!isSingle) {
+      bucket.removeKeyFromValues(key);
+    }
 
     final allStreamKeys = <String>[];
-    for (final T v in value) {
-      final modelId = idFinder(v).toString();
+    for (final value in values) {
+      final modelId = idFinder(value).toString();
+
       final bool shouldAdd;
       if (insertWhenMissing) {
         shouldAdd = bucket.allForKey(modelId).isEmpty;
@@ -137,9 +146,9 @@ abstract class ICacheService {
       }
 
       if (shouldAdd) {
-        final cacheValue = Cachable(v, modelId);
-        allStreamKeys.addAll(bucket.put(modelId, cacheValue));
-        allStreamKeys.addAll(bucket.put(realKey, cacheValue));
+        final cacheValue = Cachable(value, modelId);
+
+        allStreamKeys.addAll(bucket.put(isSingle ? modelId : key, cacheValue));
       }
     }
 

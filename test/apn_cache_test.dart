@@ -42,7 +42,7 @@ void main() {
 
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
 
-      await Future.microtask(() {});
+      await delayedUpdatedTask;
 
       cacheService.putSingle(updated, updated.id);
 
@@ -76,7 +76,7 @@ void main() {
       // * Will get the updated data when detail info is updated
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
 
-      await Future.microtask(() {});
+      await delayedUpdatedTask;
 
       expect(cacheService.cacheBuckets['User'], isNotNull);
       expect(cacheService.cacheBuckets['User_single'], isNotNull);
@@ -97,7 +97,7 @@ void main() {
   test(
     'When updating a list, the single object will not update',
     () async {
-      final single = User(id: '12', age: 38, name: 'Mark');
+      final single = User(id: '12', age: 38, name: 'Mark', description: 'Markie is a cool guy');
 
       final models = [
         User(id: '12', age: 38, name: 'Mark'),
@@ -108,33 +108,60 @@ void main() {
 
       final cacheService = MemoryCacheService();
 
+      print('Test: getList models');
+      final listStream = cacheService.getList<User>(
+        key: 'models',
+        idFinder: (u) => u.id,
+        updateData: () async => models,
+      );
+
+      final updatedListWithDescription = models.map((e) => e.id == single.id ? single : e).toList();
+
+      expect(
+          listStream,
+          emitsInOrder([
+            // The initial data given in updateData (no cache yet)
+            models,
+            // This emit is the updated data because the putSingle was called with updated data
+            updatedListWithDescription,
+            // List is updated with original data again, missing description on 12
+            models,
+            // We, done
+            emitsDone,
+          ]));
+
+      await delayedUpdatedTask;
+
       final singleStream = cacheService.getSingle(
         id: single.id,
         idFinder: (User u) => u.id,
         updateData: () async => single,
       );
 
-      final listStream = cacheService.getList<User>(
-        key: 'models',
-        idFinder: (u) => u.id,
-        updateData: () async => models,
-      );
-      // // We update the user in the list, this should not reflect an update in the single stream
-      // final updated = single.copyWith(age: 40, name: 'Markie');
-
-      // final updatedList = models.map((e) => e.id == updated.id ? updated : e).toList();
-
-      // expect(listStream, emitsInOrder([models, updatedList, emitsDone]));
-
       // Make sure we don't get a updated single object
-      expect(singleStream, emitsInOrder([single, emitsDone]));
+      expect(
+          singleStream,
+          emitsInOrder([
+            // Cached data from list
+            models.first,
+            // Updated data from singleStream.updateData
+            single,
+            // Done, we dont get the putList original data for ID 12
+            emitsDone,
+          ]));
 
-      await Future.microtask(() {});
+      // * Await the put single
+      await delayedUpdatedTask;
+
+      // // * Put a new list in the cache and make sure the detail remains
+      cacheService.putList<User>("models", models, (u) => u.id);
 
       cacheService.dispose();
     },
   );
 }
+
+Future get delayedUpdatedTask => Future.microtask(() {});
 
 class CachableUser extends Cachable<User> {
   CachableUser(User model, String id) : super(model, id);
