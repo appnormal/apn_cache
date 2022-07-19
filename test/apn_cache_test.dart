@@ -51,7 +51,7 @@ void main() {
   );
 
   test(
-    'A model will have a _detail model key to be used for caching the detail with more information',
+    'A model will have a _single model key to be used for caching the detail with more information',
     () async {
       final models = [
         User(id: '12', age: 38, name: 'Mark'),
@@ -108,7 +108,6 @@ void main() {
 
       final cacheService = MemoryCacheService();
 
-      print('Test: getList models');
       final listStream = cacheService.getList<User>(
         key: 'models',
         idFinder: (u) => u.id,
@@ -153,12 +152,93 @@ void main() {
       // * Await the put single
       await delayedUpdatedTask;
 
-      // // * Put a new list in the cache and make sure the detail remains
+      // * Put a new list in the cache and make sure the detail remains
       cacheService.putList<User>("models", models, (u) => u.id);
 
       cacheService.dispose();
     },
   );
+
+  test('When adding data a list, it will be appended to the cache', () async {
+    List<User> firstList = [
+      User(id: '12', age: 38, name: 'Mark'),
+      User(id: '13', age: 38, name: 'Mark'),
+      User(id: '14', age: 38, name: 'Mark'),
+      User(id: '15', age: 38, name: 'Mark'),
+    ];
+
+    final secondList = [
+      User(id: '16', age: 38, name: 'Mark'),
+      User(id: '17', age: 38, name: 'Mark'),
+      User(id: '18', age: 38, name: 'Mark'),
+      User(id: '19', age: 38, name: 'Mark'),
+    ];
+
+    final cacheService = MemoryCacheService();
+
+    final listStream = cacheService.getList<User>(
+      key: 'models',
+      idFinder: (u) => u.id,
+      updateData: () async => firstList,
+    );
+
+    expect(
+        listStream,
+        emitsInOrder(
+          [
+            // Check for initial data (firstList)
+            firstList,
+            // Check for updated list with data appended (secondList)
+            [...firstList, ...secondList],
+            // Make sure we're done
+            emitsDone,
+          ],
+        ));
+
+    await delayedUpdatedTask;
+
+    // * Put a new list in the cache and make sure the detail remains
+    cacheService.putList<User>("models", secondList, (u) => u.id);
+
+    await delayedUpdatedTask;
+
+    cacheService.dispose();
+  });
+
+  test('Clearing the cache will clear the correct bucket', () async {
+    final models = [
+      User(id: '12', age: 38, name: 'Mark'),
+      User(id: '13', age: 38, name: 'Mark'),
+      User(id: '14', age: 38, name: 'Mark'),
+      User(id: '15', age: 38, name: 'Mark'),
+    ];
+
+    final cacheService = MemoryCacheService();
+
+    final stream = cacheService.getList<User>(
+      key: 'models',
+      idFinder: (u) => u.id,
+      updateData: () async => models,
+    );
+
+    expect(
+        stream,
+        emitsInOrder(
+          [
+            models,
+            emitsDone,
+          ],
+        ));
+
+    await delayedUpdatedTask;
+
+    cacheService.clearCache<User>('models');
+    expect(cacheService.cacheBuckets['User']?.allForKey('models'), isEmpty);
+
+    await delayedUpdatedTask;
+
+    cacheService.dispose();
+  });
 }
 
 Future get delayedUpdatedTask => Future.microtask(() {});
