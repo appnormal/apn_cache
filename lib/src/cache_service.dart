@@ -170,7 +170,7 @@ abstract class ICacheService {
   }
 
   StreamController<List<T>> _getOrCreateStreamController<T>(String key, String? bucketSuffix) {
-    final realKey = [key, bucketSuffix].where((element) => element != null).join('_');
+    final realKey = [T.toString(), key, bucketSuffix].where((element) => element != null).join('_');
 
     if (_streams[realKey] == null) {
       _streams[realKey] = StreamController<List<T>>.broadcast();
