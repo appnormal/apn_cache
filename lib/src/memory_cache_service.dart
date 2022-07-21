@@ -45,9 +45,30 @@ class MemoryCacheBucket<T, S extends Cachable<T>> extends CacheBucket<T, S> {
   }
 
   @override
-  void removeKeyFromValues(String name) {
+  List<String> removeKeyFromValues(String key, List<String>? modelIds) {
+    final streamKeys = <String>[key];
+
+    final removedObjects = <String>[];
     for (var element in _cachedObjects) {
-      element.removeStreamKey(name);
+      // * Remove if we have a modelIds list and the object is in the list
+      final shouldRemove = modelIds == null || modelIds.contains(element.id);
+
+      if (shouldRemove) {
+        element.removeStreamKey(key);
+
+        // * No need to keep it in memory if it has no stream keys
+        if (element.streamKeys.isEmpty) {
+          removedObjects.add(element.id);
+        } else {
+          streamKeys.addAll(element.streamKeys);
+        }
+      }
     }
+
+    // * Remove objects without stream keys from the bucket
+    _cachedObjects.removeWhere((element) => removedObjects.contains(element.id));
+
+    // filter duplicates
+    return streamKeys.toSet().toList();
   }
 }

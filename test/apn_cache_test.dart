@@ -1,8 +1,9 @@
-import 'package:equatable/equatable.dart';
-import 'package:meta/meta.dart';
 import 'package:test/test.dart';
 
 import 'package:apn_cache/apn_cache.dart';
+
+import 'helpers/helpers.dart';
+import 'helpers/models.dart';
 
 void main() {
   test('cache is saved when saving a model', () {
@@ -42,7 +43,7 @@ void main() {
 
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
 
-      await delayedUpdatedTask;
+      await tick;
 
       cacheService.putSingle(updated, updated.id);
 
@@ -76,7 +77,7 @@ void main() {
       // * Will get the updated data when detail info is updated
       expect(stream, emitsInOrder([models, updatedList, emitsDone]));
 
-      await delayedUpdatedTask;
+      await tick;
 
       expect(cacheService.cacheBuckets['User'], isNotNull);
       expect(cacheService.cacheBuckets['User_single'], isNotNull);
@@ -129,7 +130,7 @@ void main() {
             emitsDone,
           ]));
 
-      await delayedUpdatedTask;
+      await tick;
 
       final singleStream = cacheService.getSingle(
         id: single.id,
@@ -149,7 +150,7 @@ void main() {
           ]));
 
       // * Await the put single
-      await delayedUpdatedTask;
+      await tick;
 
       // * Put a new list in the cache and make sure the detail remains
       cacheService.putList<User>("models", models, (u) => u.id);
@@ -194,12 +195,12 @@ void main() {
           ],
         ));
 
-    await delayedUpdatedTask;
+    await tick;
 
     // * Put a new list in the cache and make sure the detail remains
     cacheService.putList<User>("models", secondList, (u) => u.id);
 
-    await delayedUpdatedTask;
+    await tick;
 
     cacheService.dispose();
   });
@@ -229,51 +230,13 @@ void main() {
           ],
         ));
 
-    await delayedUpdatedTask;
+    await tick;
 
-    cacheService.clearCache<User>('models');
+    cacheService.removeList<User>('models', emit: false);
     expect(cacheService.cacheBuckets['User']?.allForKey('models'), isEmpty);
 
-    await delayedUpdatedTask;
+    await tick;
 
     cacheService.dispose();
   });
-}
-
-Future get delayedUpdatedTask => Future.microtask(() {});
-
-class CachableUser extends Cachable<User> {
-  CachableUser(User model, String id) : super(model, id);
-}
-
-@immutable
-class User extends Equatable {
-  User({
-    required this.id,
-    required this.name,
-    required this.age,
-    this.description,
-  });
-
-  final String id;
-  final String name;
-  final int age;
-  final String? description;
-
-  @override
-  List<Object?> get props => [id, name, age, description];
-
-  User copyWith({
-    String? id,
-    String? name,
-    int? age,
-    String? description,
-  }) {
-    return User(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      age: age ?? this.age,
-      description: description ?? this.description,
-    );
-  }
 }

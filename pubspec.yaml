@@ -1,6 +1,6 @@
 name: apn_cache
 description: In memory caching service for Flutter projects
-version: 0.0.2
+version: 0.1.0
 homepage: https://github.com/appnormal/apn_cache
 
 environment:
