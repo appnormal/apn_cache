@@ -1,3 +1,7 @@
+## 0.1.1
+
+* Fix: Notify listeners when there is no server data available. 
+
 ## 0.1.0 - BREAKING
 
 * BREAKING: Renamed clearCache to removeList. Migrate to `removeList(key, emit: false)` to reproduce old behaviour

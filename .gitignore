@@ -1,2 +1,8 @@
 .dart_tool 
 .packages
+.idea/.gitignore
+.idea/apn_cache.iml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/libraries/Dart_Packages.xml
+.idea/libraries/Dart_SDK.xml
