@@ -165,6 +165,12 @@ abstract class ICacheService {
     final bucketSuffix = isSingle ? _singleSuffix : null;
     final bucket = getBucket<T, Cachable<T>>(bucketSuffix);
 
+    // Notify listener when there is no server data available.
+    if (values.isEmpty) {
+      _getOrCreateStreamController<T>(key, bucketSuffix).add([]);
+      return;
+    }
+
     final allStreamKeys = <String>[];
     for (final value in values) {
       final modelId = idFinder(value).toString();
