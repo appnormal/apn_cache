@@ -132,7 +132,7 @@ void main() {
 
       await tick;
 
-      final singleStream = cacheService.getSingle<User?>(
+      final singleStream = cacheService.getSingle<User>(
         id: single.id,
         updateData: () async => single,
       );

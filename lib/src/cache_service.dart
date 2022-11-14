@@ -31,7 +31,7 @@ abstract class ICacheService {
       listUpdateData = null;
     }
 
-    final controller = _getCacheStream<T?>(
+    final controller = _getCacheStream<T>(
       key: id.toString(),
       idFinder: (_) => id,
       updateData: listUpdateData,
