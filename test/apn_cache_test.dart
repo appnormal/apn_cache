@@ -132,7 +132,7 @@ void main() {
 
       await tick;
 
-      final singleStream = cacheService.getSingle(
+      final singleStream = cacheService.getSingle<User>(
         id: single.id,
         updateData: () async => single,
       );
@@ -236,6 +236,18 @@ void main() {
     expect(cacheService.cacheBuckets['User']?.allForKey('models'), isEmpty);
 
     await tick;
+
+    cacheService.dispose();
+  });
+
+  test('Getting a value from getSingle when no values are present will result in nothing', () async {
+    final cacheService = MemoryCacheService();
+
+    final stream = cacheService.getSingle<User?>(id: '123');
+
+    await tick;
+
+    expect(stream, emitsDone);
 
     cacheService.dispose();
   });

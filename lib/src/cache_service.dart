@@ -14,7 +14,7 @@ abstract class ICacheService {
     return cache.isEmpty ? null : cache.first.model;
   }
 
-  Stream<T> getSingle<T>({
+  Stream<T?> getSingle<T>({
     // Key where the data is stored
     required Object id,
     // Will be called directly to refresh (or insert the first entry of) the data to be cached
@@ -38,7 +38,12 @@ abstract class ICacheService {
       bucketSuffix: _singleSuffix,
     );
 
-    return controller.stream.map((event) => event.first);
+    return controller.stream.map((event) {
+      if(event.isNotEmpty){
+       return event.first;
+      }
+      return null;
+    });
   }
 
   void putSingle<T>(T value, Object id) {
