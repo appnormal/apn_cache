@@ -45,12 +45,9 @@ abstract class ICacheService {
     putList<T>(id.toString(), [value], <T>(_) => id);
   }
 
-  void removeSingle<T>(String key, String modelId, {bool emit = true}) {
-    // * Remove main models
-    removeList<T>(key, modelIds: [modelId], emit: emit);
-
-    // * Remove single models
-    removeList<T>(key, modelIds: [modelId], emit: emit, bucketSuffix: _singleSuffix);
+  void remove<T>(String modelId, {bool emit = true}) {
+    _removeSingle<T>(modelId, emit: emit);
+    _removeSingle<T>(modelId, emit: emit, bucketSuffix: _singleSuffix);
   }
 
   /// Returns a stream containing a list of objects withd
@@ -90,6 +87,25 @@ abstract class ICacheService {
     );
   }
 
+  void _removeSingle<T>(
+    String modelId, {
+    bool emit = true,
+    String? bucketSuffix,
+  }) {
+    final bucket = getBucket<T, Cachable<T>>(bucketSuffix);
+
+    // if modelIds=null means we want to remove all models from this key
+    final streamKeys = bucket.removeWhereId(modelId);
+
+    // * Broadcast the remove to all listeners
+    if (emit) {
+      for (final element in streamKeys) {
+        final values = bucket.allForKey(element);
+        _getOrCreateStreamController<T>(element, bucketSuffix).add(values.map((e) => e.model).toList());
+      }
+    }
+  }
+
   // * Remove model references from this key
   void removeList<T>(
     String key, {
@@ -106,7 +122,6 @@ abstract class ICacheService {
     if (emit) {
       for (final element in streamKeys) {
         final values = bucket.allForKey(element);
-        print('update $element with ${values.length} values');
         _getOrCreateStreamController<T>(element, bucketSuffix).add(values.map((e) => e.model).toList());
       }
     }
@@ -222,6 +237,8 @@ abstract class CacheBucket<T, S extends Cachable<T>> {
   List<S> allForKey(String streamKey);
 
   List<String> removeKeyFromValues(String key, List<String>? modelIds);
+
+  List<String> removeWhereId(String modelId);
 }
 
 class Cachable<T> {

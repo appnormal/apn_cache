@@ -1,3 +1,7 @@
+## 1.0.0
+
+* BREAKING: Changed removeSingle to not include a key. And renamed the method to `remove` to indicate the object will be removed from the cache.
+
 ## 0.1.1
 
 * Fix: Notify listeners when there is no server data available. 

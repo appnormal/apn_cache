@@ -45,6 +45,23 @@ class MemoryCacheBucket<T, S extends Cachable<T>> extends CacheBucket<T, S> {
   }
 
   @override
+  List<String> removeWhereId(String modelId) {
+    final streamKeys = <String>[];
+
+    // * Remove the object from the bucket
+    _cachedObjects.removeWhere((element) {
+      if (element.id == modelId) {
+        streamKeys.addAll(element.streamKeys);
+        return true;
+      }
+      return false;
+    });
+
+    // filter duplicates
+    return streamKeys.toSet().toList();
+  }
+
+  @override
   List<String> removeKeyFromValues(String key, List<String>? modelIds) {
     final streamKeys = <String>[key];
 

@@ -30,7 +30,7 @@ void main() {
 
     await tick;
 
-    cacheService.removeSingle<User>('models', '13');
+    cacheService.remove<User>('13');
 
     cacheService.dispose();
   });
@@ -55,7 +55,7 @@ void main() {
 
     await tick;
 
-    cacheService.removeSingle<User>('models', '13', emit: false);
+    cacheService.remove<User>('13', emit: false);
 
     cacheService.dispose();
   });
