@@ -39,8 +39,8 @@ abstract class ICacheService {
     );
 
     return controller.stream.map((event) {
-      if(event.isNotEmpty){
-       return event.first;
+      if (event.isNotEmpty) {
+        return event.first;
       }
       return null;
     });
@@ -48,6 +48,11 @@ abstract class ICacheService {
 
   void putSingle<T>(T value, Object id) {
     putList<T>(id.toString(), [value], <T>(_) => id);
+  }
+
+  void removeSingle<T>(String key, String modelId, {bool emit = true}) {
+    removeList<T>(key, modelIds: [modelId], emit: emit);
+    removeList<T>(key, modelIds: [modelId], emit: emit, bucketSuffix: _singleSuffix);
   }
 
   void remove<T>(String modelId, {bool emit = true}) {
