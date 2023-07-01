@@ -1,3 +1,7 @@
+## 1.0.3
+
+* Fix bug in stream.onListen that could result in getting wrong results from the cache
+
 ## 1.0.0
 
 * BREAKING: Changed removeSingle to not include a key. And renamed the method to `remove` to indicate the object will be removed from the cache.

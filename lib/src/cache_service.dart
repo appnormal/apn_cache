@@ -163,19 +163,8 @@ abstract class ICacheService {
       controller.addError(error, stackTrace);
     });
 
-    // * Get the cached value if we have it from list
-    final cache = getBucket<T, Cachable<T>>(bucketSuffix).allForKey(key);
-
     // TOIMPROVE: add TTL (Time to live) and check if it is expired,
     // only return non-stale cache and call udpateData when needed
-
-    if (cache.isNotEmpty) {
-      // Emit the cached value async, so that the stream
-      // is fully initialized and listened to
-      controller.onListen = () {
-        controller.add(cache.map((e) => e.model).toList());
-      };
-    }
 
     return controller;
   }
@@ -228,7 +217,18 @@ abstract class ICacheService {
     final realKey = [T.toString(), key, bucketSuffix].where((element) => element != null).join('_');
 
     if (_streams[realKey] == null) {
-      _streams[realKey] = StreamController<List<T>>.broadcast();
+      final stream = StreamController<List<T>>.broadcast();
+
+      // New listen will directly get the cached value if we have it
+      stream.onListen = () {
+        final cache = getBucket<T, Cachable<T>>(bucketSuffix).allForKey(key);
+
+        if (cache.isNotEmpty) {
+          stream.add(cache.map((e) => e.model).toList());
+        }
+      };
+
+      _streams[realKey] = stream;
     }
     return _streams[realKey]! as StreamController<List<T>>;
   }
